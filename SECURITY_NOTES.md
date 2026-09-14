@@ -1,0 +1,5 @@
+# Security baseline — 2026-09-14
+
+- GET /recipes — 200 OK — lists all recipes — works anonymously, no authentication.
+- POST /recipes — 201 Created — creates a new recipe — works anonymously, no authentication.
+- DELETE /recipes/1 — 204 No Content — deletes recipe 1 — works anonymously, no authentication.
