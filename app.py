@@ -8,6 +8,7 @@ That is the point: you will add both, lesson by lesson, in Units 2 and 3.
 import sqlite3
 
 from flask import Flask, g, jsonify, request
+from werkzeug.security import generate_password_hash, check_password_hash
 
 DATABASE = "recipes.db"
 
@@ -126,6 +127,76 @@ def delete_recipe(recipe_id):
     if cur.rowcount == 0:
         return jsonify({"error": "recipe not found"}), 404
     return "", 204
+
+
+@app.post("/register")
+def register():
+    data = request.get_json(silent=True) or {}
+
+    username = data.get("username")
+    email = data.get("email")
+    password = data.get("password")
+
+    # Basic validation
+    if (
+        not isinstance(username, str) or not username.strip() or
+        not isinstance(email, str) or not email.strip() or
+        not isinstance(password, str) or not password.strip()
+    ):
+        return jsonify({"error": "username, email, and password are required"}), 400
+
+    password_hash = generate_password_hash(password)
+
+    db = get_db()
+    try:
+        cur = db.execute(
+            """
+            INSERT INTO users (username, email, password_hash)
+            VALUES (?, ?, ?)
+            """,
+            (username, email, password_hash),
+        )
+        db.commit()
+    except sqlite3.IntegrityError:
+        # assumes UNIQUE(username) or UNIQUE(email) on users table
+        return jsonify({"error": "account with that username or email already exists"}), 409
+
+    return jsonify(
+        {
+            "id": cur.lastrowid,
+            "username": username,
+            "email": email,
+        }
+    ), 201
+
+
+@app.post("/login")
+def login():
+    data = request.get_json(silent=True) or {}
+
+    username = data.get("username")
+    password = data.get("password")
+
+    if (
+        not isinstance(username, str) or not username.strip()
+        or not isinstance(password, str) or not password
+    ):
+        return jsonify({"error": "username and password are required"}), 400
+
+    row = get_db().execute(
+        "SELECT id, username, password_hash FROM users WHERE username = ?",
+        (username,),
+    ).fetchone()
+
+    if row is None or not check_password_hash(row["password_hash"], password):
+        return jsonify({"error": "invalid username or password"}), 401
+
+    return jsonify({
+        "message": "login successful",
+        "id": row["id"],
+        "username": row["username"],
+    }), 200
+
 
 
 if __name__ == "__main__":
