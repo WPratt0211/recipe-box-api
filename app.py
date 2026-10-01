@@ -4,15 +4,24 @@ A working Flask + SQLite CRUD API for recipes. It stores data perfectly —
 and it trusts everyone. There is no authentication and no authorization yet.
 That is the point: you will add both, lesson by lesson, in Units 2 and 3.
 """
+import os
+from datetime import datetime, timedelta, timezone
 
+import jwt
+from dotenv import load_dotenv
 import sqlite3
 
 from flask import Flask, g, jsonify, request
 from werkzeug.security import generate_password_hash, check_password_hash
 
+load_dotenv()
+
+JWT_SECRET = os.getenv("JWT_SECRET")
+
 DATABASE = "recipes.db"
 
 app = Flask(__name__)
+
 
 
 def get_db():
@@ -191,11 +200,23 @@ def login():
     if row is None or not check_password_hash(row["password_hash"], password):
         return jsonify({"error": "invalid username or password"}), 401
 
+    payload = {
+        "sub": row["id"],
+        "username": row["username"],
+        "exp": datetime.now(timezone.utc) + timedelta(hours=1),
+    }
+
+    token = jwt.encode(
+        payload,
+        JWT_SECRET,
+        algorithm="HS256",
+    )
+
     return jsonify({
         "message": "login successful",
-        "id": row["id"],
-        "username": row["username"],
+        "token": token,
     }), 200
+
 
 
 
