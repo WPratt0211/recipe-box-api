@@ -7,11 +7,12 @@ Authentication is implemented with JWTs.
 import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
+from functools import wraps
 
 import jwt
 from dotenv import load_dotenv
 from flask import Flask, g, jsonify, request
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 
 load_dotenv()
@@ -22,10 +23,6 @@ JWT_ALG = "HS256"
 print("JWT_SECRET loaded:", JWT_SECRET is not None)
 print("JWT_SECRET length:", len(JWT_SECRET) if JWT_SECRET else 0)
 print("JWT_ALG:", JWT_ALG)
-
-
-JWT_SECRET = os.getenv("JWT_SECRET")
-JWT_ALG = "HS256"
 
 DATABASE = "recipes.db"
 
@@ -43,6 +40,7 @@ def get_db():
 @app.teardown_appcontext
 def close_db(exception):
     db = g.pop("db", None)
+
     if db is not None:
         db.close()
 
@@ -104,7 +102,6 @@ def require_auth():
             401,
         )
 
-
     user_id = payload.get("sub")
 
     if not user_id:
@@ -120,6 +117,17 @@ def require_auth():
     return payload, None
 
 
+def auth_required(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        payload, error = require_auth()
+
+        if error:
+            return error
+
+        return f(*args, **kwargs)
+
+    return wrapper
 
 
 @app.get("/")
@@ -156,12 +164,8 @@ def get_recipe(recipe_id):
 
 
 @app.post("/recipes")
+@auth_required
 def create_recipe():
-    payload, error = require_auth()
-
-    if error:
-        return error
-
     user_id = g.user_id
     username = g.username
 
@@ -209,12 +213,8 @@ def create_recipe():
 
 
 @app.patch("/recipes/<int:recipe_id>")
+@auth_required
 def update_recipe(recipe_id):
-    payload, error = require_auth()
-
-    if error:
-        return error
-
     data = request.get_json(silent=True)
 
     if not data:
@@ -280,12 +280,8 @@ def update_recipe(recipe_id):
 
 
 @app.delete("/recipes/<int:recipe_id>")
+@auth_required
 def delete_recipe(recipe_id):
-    payload, error = require_auth()
-
-    if error:
-        return error
-
     db = get_db()
 
     recipe = db.execute(
@@ -299,7 +295,7 @@ def delete_recipe(recipe_id):
     if recipe["owner_id"] != g.user_id and g.role != "admin":
         return jsonify({"error": "forbidden"}), 403
 
-    cur = db.execute(
+    db.execute(
         "DELETE FROM recipes WHERE id = ?",
         (recipe_id,),
     )
@@ -397,7 +393,6 @@ def login():
         "role": row["role"],
         "exp": datetime.now(timezone.utc) + timedelta(seconds=60),
     }
-
 
     token = jwt.encode(
         payload,
