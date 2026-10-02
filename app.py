@@ -115,6 +115,7 @@ def require_auth():
 
     g.user_id = int(user_id)
     g.username = payload.get("username")
+    g.role = payload.get("role", "user")
 
     return payload, None
 
@@ -231,7 +232,7 @@ def update_recipe(recipe_id):
     if recipe is None:
         return jsonify({"error": "recipe not found"}), 404
 
-    if recipe["owner_id"] != g.user_id:
+    if recipe["owner_id"] != g.user_id and g.role != "admin":
         return jsonify({"error": "forbidden"}), 403
 
     fields = []
@@ -295,7 +296,7 @@ def delete_recipe(recipe_id):
     if recipe is None:
         return jsonify({"error": "recipe not found"}), 404
 
-    if recipe["owner_id"] != g.user_id:
+    if recipe["owner_id"] != g.user_id and g.role != "admin":
         return jsonify({"error": "forbidden"}), 403
 
     cur = db.execute(
@@ -330,15 +331,17 @@ def register():
 
     password_hash = generate_password_hash(password)
 
+    role = "user"
+
     db = get_db()
 
     try:
         cur = db.execute(
             """
-            INSERT INTO users (username, email, password_hash)
-            VALUES (?, ?, ?)
+            INSERT INTO users (username, email, password_hash, role)
+            VALUES (?, ?, ?, ?)
             """,
-            (username, email, password_hash),
+            (username, email, password_hash, role),
         )
         db.commit()
 
@@ -373,7 +376,7 @@ def login():
 
     row = get_db().execute(
         """
-        SELECT id, username, password_hash
+        SELECT id, username, password_hash, role
         FROM users
         WHERE username = ?
         """,
@@ -391,6 +394,7 @@ def login():
     payload = {
         "sub": str(row["id"]),
         "username": row["username"],
+        "role": row["role"],
         "exp": datetime.now(timezone.utc) + timedelta(seconds=60),
     }
 
